@@ -4,15 +4,11 @@ import uasyncio as asyncio
 import urequests as requests
 
 from config import *
+from machine import Timer
 from secrets import *
 
 
 wlan = network.WLAN(network.STA_IF)
-
-
-def date_time():
-    t = time.localtime()
-    return ' ['+str(t[1])+'/'+str(t[2])+'/'+str(t[0])+' '+str(t[3])+':'+str(t[4])+':'+str(t[5])+'] '
 
 
 def connect_to_network():   
@@ -38,9 +34,37 @@ def connect_to_network():
         status = wlan.ifconfig()
         print('ip = ' + status[0])
     
-    log_request('Connected_to_WiFi')
-    
-    
+    asyncio.create_task(log_request('Connected_to_WiFi'))
+    asyncio.create_task(log_request(status[0]))
+    asyncio.create_task(send_ip())
+
+
+def date_time():
+    t = time.localtime()
+    return ' ['+str(t[1])+'/'+str(t[2])+'/'+str(t[0])+' '+str(t[3])+':'+str(t[4])+':'+str(t[5])+'] '
+
+
+async def log_request(msg):
+    r = requests.get(HOME_SERVER + '/log/GARAGE_DOOR_CONTROLLER/'+msg)
+    r.close()
+    print('sent log request, message = ', msg)
+
+
+def reset_pico_cb(timer):
+    machine.reset()
+
+
+async def send_ip():
+    ip = wlan.ifconfig()[0]
+    r = requests.get(HOME_SERVER + '/ip/GARAGE_DOOR_CONTROLLER/' + ip)
+    r.close()
+    print('sent ip', ip)
+
+
+def send_ip_cb(timer):
+    asyncio.create_task(send_ip())
+
+
 async def serve_client(reader, writer):
     
     print('\nHome Server connected to RPi Pico W - Garage Door Controller')
@@ -67,16 +91,23 @@ async def serve_client(reader, writer):
     print('Home Server disconnected from RPi Pico W - Garage Door Controller')
 
 
+def set_up_timers():
+    send_ip_timer = Timer()
+    reset_timer = Timer()
+    
+    # set up timer to send IP ADDR every 8 hours
+    send_ip_timer.init(period=1*1000*60*60*8, mode=Timer.PERIODIC, callback=send_ip_cb)
+    
+    # set up timer to reset Pico W every 24 hours
+    reset_timer.init(period=1*1000*60*60*24, mode=Timer.PERIODIC, callback=reset_pico_cb)
+
+
 async def toggle_switch():
     door.toggle()
     await asyncio.sleep(0.85)
     door.toggle()
     print('garage door switch toggled')
     
-
-async def log_request(msg):
-    r = requests.get(HOME_SERVER + '/log/GARAGE_DOOR_CONTROLLER/'+msg)
-    r.close()
 
 async def main():
 
@@ -88,11 +119,13 @@ async def main():
     print('Webserver started on RPi Pico W')
     print('Waiting for client connection...')
     
+    set_up_timers()
+    
     while True:
         led.on()
         await asyncio.sleep(0.75)
         led.off()
-        await asyncio.sleep(7)
+        await asyncio.sleep(5)
         
 try:
     asyncio.run(main())
