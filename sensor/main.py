@@ -1,7 +1,7 @@
 import network
 import urequests
 
-from machine import Pin
+from machine import Pin, Timer
 from secrets import *
 from time import sleep
 
@@ -42,6 +42,10 @@ def connect_to_network():
         led.off()
 
 
+def reset_cb(timer):
+    machine.reset()
+
+
 def send_request_to_home_server(door_status):
     
     try:
@@ -71,6 +75,8 @@ def send_request_to_home_server(door_status):
 
 
 connect_to_network()
+reset_timer = Timer()
+reset_timer.init(period=1000*60*60*12, mode=Timer.PERIODIC, callback=reset_cb)
 
 while True:
     
